@@ -1,0 +1,1 @@
+em++ src/module.cpp -o module.wasm -O2 -sSTANDALONE_WASM -sSIDE_MODULE && g++ src/host.cpp -o host -O2 -lwasmedge && ./host
