@@ -2,21 +2,21 @@
 #include "../include/zlib.h"
 #include <emscripten.h>
 #else
+#include <iostream>
+#include <stdexcept>
 #include <zlib.h>
 #endif
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <iterator>
 #include <random>
-#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
 // static_assert(sizeof(unsigned char) == sizeof(std::byte), "Unsgined char and
-// std::bye are not equal in size");
+// std::byte are not equal in size");
 
 static constexpr size_t DATA_SIZE = 16 * 1024 * 1024;
 static constexpr size_t BUFFER_SIZE = 16'384; // 16 * 1024
@@ -32,12 +32,16 @@ constexpr auto randChar = []() -> char {
 void *custom_malloc(voidpf opaque, uInt items, uInt size) {
 
   auto add = malloc(items * size);
+#ifndef __EMSCRIPTEN__
   std::cout << "zalloc : " << add << " = " << items * size << std::endl;
+#endif
   return add;
 }
 
 void custom_free(voidpf opaque, voidpf address) {
+#ifndef __EMSCRIPTEN__
   std::cout << "zfree : " << address << std::endl;
+#endif
   return free(address);
 }
 
@@ -48,8 +52,10 @@ int InitDeflateZStream(z_stream &strm, int level) {
 
   int ret = deflateInit(&strm, level);
 
+#ifndef __EMSCRIPTEN__
   if (ret != Z_OK)
     throw std::runtime_error("'deflateInit' failed!");
+#endif
 
   return ret;
 }
@@ -61,8 +67,10 @@ int InitInflateZStream(z_stream &strm) {
 
   int ret = inflateInit(&strm);
 
+#ifndef __EMSCRIPTEN__
   if (ret != Z_OK)
     throw std::runtime_error("'inflateInit' failed!");
+#endif
 
   return ret;
 }
@@ -96,8 +104,10 @@ std::vector<unsigned char> Deflate(const std::vector<T> &source,
 
     ret = deflate(&strm, Z_FINISH);
 
+#ifndef __EMSCRIPTEN__
     if (ret == Z_STREAM_ERROR)
       throw std::runtime_error("Zlib Stream Error!");
+#endif
   } while (ret != Z_STREAM_END);
 
   deflateEnd(&strm);
@@ -133,8 +143,10 @@ std::vector<T> Inflate(const std::vector<unsigned char> &source) {
 
     ret = inflate(&strm, Z_FINISH);
 
+#ifndef __EMSCRIPTEN__
     if (ret == Z_STREAM_ERROR)
       throw std::runtime_error("Zlib Stream Error!");
+#endif
   } while (ret != Z_STREAM_END);
 
   inflateEnd(&strm);
@@ -147,20 +159,25 @@ std::vector<T> Inflate(const std::vector<unsigned char> &source) {
   return ret_buffer;
 }
 
-boolean test() {
+bool test() {
   std::vector<char> data(DATA_SIZE, {});
   std::generate_n(std::begin(data), DATA_SIZE, randChar);
 
+#ifndef __EMSCRIPTEN__
   std::cout << "Compressing Buffer of size : " << DATA_SIZE << "B" << std::endl;
+#endif
   const auto compressed_buffer = Deflate(data, 6);
 
+#ifndef __EMSCRIPTEN__
   std::cout << "Decompressing Buffer of size : " << compressed_buffer.size()
             << "B" << std::endl;
+#endif
   const auto decompressed_buffer = Inflate<char>(compressed_buffer);
 
   auto comp_res = data == decompressed_buffer;
-
+#ifndef __EMSCRIPTEN__
   std::cout << (comp_res ? "Success" : "Fail") << std::endl;
+#endif
 
   return comp_res;
 }
