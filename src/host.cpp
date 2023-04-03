@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstring>
 #include <exception>
+#include <iostream>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -14,26 +15,27 @@ inline bool isLittleEndian() {
 }
 
 struct Util {
+
   std::unordered_map<uint32_t, z_stream *> stream_map;
 };
 
 struct wasm_z_stream {
-  uint32_t *next_in;
+  uint32_t next_in;
   uint32_t avail_in;
   uint32_t total_in;
 
-  uint32_t *next_out;
+  uint32_t next_out;
   uint32_t avail_out;
   uint32_t total_out;
 
-  uint32_t *msg;
-  uint32_t *state;
+  uint32_t msg;
+  uint32_t state;
 
   uint32_t zalloc;
   uint32_t zfree;
-  uint32_t *opaque;
+  uint32_t opaque;
 
-  uint32_t data_type;
+  int32_t data_type;
 
   uint32_t adler;
   uint32_t reserved;
@@ -130,87 +132,46 @@ WasmEdge_inflateInit_(void *Data,
   return WasmEdge_Result_Success;
 }
 
-/**
- * before inflate
- * copy from wasm to host next_in avail_in data_type adler
- */
-
-/* z_stream *GetHostZStream(const WasmEdge_CallingFrameContext *CallFrameCxt,
-                         uint32_t _wasm_z_stream_ptr, Util *_util) {
-  WasmEdge_MemoryInstanceContext *MemCxt =
-      WasmEdge_CallingFrameGetMemoryInstance(CallFrameCxt, 0);
-  wasm_z_stream *wasm_stream =
-      reinterpret_cast<wasm_z_stream *>(WasmEdge_MemoryInstanceGetPointer(
-          MemCxt, _wasm_z_stream_ptr, sizeof(wasm_z_stream)));
-
-  auto stream_map_it =
-      reinterpret_cast<Util *>(_util)->stream_map.find(_wasm_z_stream_ptr);
-
-  if (stream_map_it == reinterpret_cast<Util *>(_util)->stream_map.end())
-    throw std::runtime_error("ZStream not found in map");
-
-  auto stream = stream_map_it->second;
-
-  auto next_in_ptr =
-      WasmEdge_MemoryInstanceGetPointer(MemCxt, wasm_stream->next_in, );
-
-  stream->next_in =
-      reinterpret_cast<decltype(z_stream::next_in)>(wasm_stream->next_in);
-  stream->avail_in = wasm_stream->avail_in;
-
-  stream->next_out =
-      reinterpret_cast<decltype(z_stream::next_out)>(wasm_stream->next_out);
-  stream->avail_out = wasm_stream->avail_out;
-
-  stream->data_type = wasm_stream->data_type;
-
-  // ignore rest
-}
-
-z_stream *WriteWasmZStream(const WasmEdge_CallingFrameContext *CallFrameCxt,
-                           uint32_t _wasm_z_stream_ptr, Util *_util) {}
-
-WasmEdge_Result
-WasmEdge_deflate(void *Data, const WasmEdge_CallingFrameContext *CallFrameCxt,
-                 const WasmEdge_Value *In, WasmEdge_Value *Out) {
+template <auto &Func>
+WasmEdge_Result WasmEdge_algo1(void *Data,
+                               const WasmEdge_CallingFrameContext *CallFrameCxt,
+                               const WasmEdge_Value *In, WasmEdge_Value *Out) {
   uint32_t wasm_z_stream_ptr = (uint32_t)WasmEdge_ValueGetI32(In[0]);
   int32_t wasm_flush = WasmEdge_ValueGetI32(In[1]);
-
-  z_stream *stream =
-      GetHostZStream(CallFrameCxt, wasm_z_stream_ptr, (Util *)Data);
-
-  const auto z_res = deflate(stream, wasm_flush);
-
-  WriteWasmZStream(CallFrameCxt, stream, wasm_z_stream);
-
-  Out[0] = WasmEdge_ValueGenI32(z_res);
-
-  return WasmEdge_Result_Success;
-}
-
-WasmEdge_Result
-WasmEdge_inflate(void *Data, const WasmEdge_CallingFrameContext *CallFrameCxt,
-                 const WasmEdge_Value *In, WasmEdge_Value *Out) {
-  uint32_t wasm_z_stream_ptr = (uint32_t)WasmEdge_ValueGetI32(In[0]);
-  int32_t wasm_flush = WasmEdge_ValueGetI32(In[1]);
-
-  WasmEdge_MemoryInstanceContext *MemCxt =
-      WasmEdge_CallingFrameGetMemoryInstance(CallFrameCxt, 0);
-  wasm_z_stream *wasm_stream =
-      reinterpret_cast<wasm_z_stream *>(WasmEdge_MemoryInstanceGetPointer(
-          MemCxt, wasm_z_stream_ptr, sizeof(wasm_z_stream)));
 
   auto stream_map_it =
       reinterpret_cast<Util *>(Data)->stream_map.find(wasm_z_stream_ptr);
 
-  if (stream_map_it == reinterpret_cast<Util *>(Data)->stream_map.end())
+  if (stream_map_it == reinterpret_cast<Util *>(Out)->stream_map.end())
     throw std::runtime_error("ZStream not found in map");
 
-  const auto z_res = inflate(stream_map_it->second, wasm_flush);
+  auto stream = stream_map_it->second;
+
+  WasmEdge_MemoryInstanceContext *MemCxt =
+      WasmEdge_CallingFrameGetMemoryInstance(CallFrameCxt, 0);
+  uint8_t *wasm_mem =
+      WasmEdge_MemoryInstanceGetPointer(MemCxt, 0, 128 * 1024 * 1024);
+
+  wasm_z_stream *wasm_stream =
+      reinterpret_cast<wasm_z_stream *>(wasm_mem + wasm_z_stream_ptr);
+
+  stream->avail_in = wasm_stream->avail_in;
+  stream->avail_out = wasm_stream->avail_out;
+  stream->next_in = wasm_mem + wasm_stream->next_in;
+  stream->next_out = wasm_mem + wasm_stream->next_out;
+
+  const auto z_res = Func(stream, wasm_flush);
+
+  // now write it to wasm memory
+  wasm_stream->avail_in = stream->avail_in;
+  wasm_stream->avail_out = stream->avail_out;
+  wasm_stream->next_in = stream->next_in - wasm_mem;
+  wasm_stream->next_out = stream->next_out - wasm_mem;
+
   Out[0] = WasmEdge_ValueGenI32(z_res);
 
   return WasmEdge_Result_Success;
-} */
+}
 
 template <auto &Func>
 WasmEdge_Result
@@ -242,7 +203,7 @@ static void
 RegisterHostFunction(const std::string &_function_name,
                      WasmEdge_HostFunc_t _func_pointer,
                      std::vector<WasmEdge_ValType> _params_list,
-                     std::vector<WasmEdge_ValType> _return_list, Util &_util,
+                     std::vector<WasmEdge_ValType> _return_list, Util *_util,
                      WasmEdge_ModuleInstanceContext *_module_context) {
   WasmEdge_String HostFuncName =
       WasmEdge_StringCreateByCString(_function_name.c_str());
@@ -251,7 +212,7 @@ RegisterHostFunction(const std::string &_function_name,
       WasmEdge_FunctionTypeCreate(_params_list.data(), _params_list.size(),
                                   _return_list.data(), _return_list.size());
   WasmEdge_FunctionInstanceContext *HostFunc =
-      WasmEdge_FunctionInstanceCreate(HostFType, _func_pointer, &_util, 0);
+      WasmEdge_FunctionInstanceCreate(HostFType, _func_pointer, _util, 0);
   WasmEdge_ModuleInstanceAddFunction(_module_context, HostFuncName, HostFunc);
   WasmEdge_FunctionTypeDelete(HostFType);
   WasmEdge_StringDelete(HostFuncName);
@@ -289,21 +250,21 @@ int main() {
   RegisterHostFunction("deflateInit_", WasmEdge_deflateInit_,
                        {WasmEdge_ValType_I32, WasmEdge_ValType_I32,
                         WasmEdge_ValType_I32, WasmEdge_ValType_I32},
-                       {WasmEdge_ValType_I32}, util, HostModCxt);
+                       {WasmEdge_ValType_I32}, &util, HostModCxt);
   /**
    * @brief
    * ZEXTERN int ZEXPORT deflate OF((z_streamp strm, int flush));
    */
-  /*   RegisterHostFunction("deflate", WasmEdge_deflate,
-                         {WasmEdge_ValType_I32, WasmEdge_ValType_I32},
-                         {WasmEdge_ValType_I32}, util, HostModCxt); */
+  RegisterHostFunction("deflate", WasmEdge_algo1<deflate>,
+                       {WasmEdge_ValType_I32, WasmEdge_ValType_I32},
+                       {WasmEdge_ValType_I32}, &util, HostModCxt);
 
   /**
    * @brief
    * ZEXTERN int ZEXPORT deflateEnd OF((z_streamp strm));
    */
   RegisterHostFunction("deflateEnd", WasmEdge_ZlibEnd<deflateEnd>,
-                       {WasmEdge_ValType_I32}, {WasmEdge_ValType_I32}, util,
+                       {WasmEdge_ValType_I32}, {WasmEdge_ValType_I32}, &util,
                        HostModCxt);
 
   /**
@@ -317,26 +278,26 @@ int main() {
                            WasmEdge_ValType_I32,
                            WasmEdge_ValType_I32,
                        },
-                       {WasmEdge_ValType_I32}, util, HostModCxt);
+                       {WasmEdge_ValType_I32}, &util, HostModCxt);
 
   /**
    * @brief
    * ZEXTERN int ZEXPORT inflate OF((z_streamp strm, int flush));
    */
 
-  /*   RegisterHostFunction("inflate", WasmEdge_inflate,
-                         {
-                             WasmEdge_ValType_I32,
-                             WasmEdge_ValType_I32,
-                         },
-                         {WasmEdge_ValType_I32}, util, HostModCxt); */
+  RegisterHostFunction("inflate", WasmEdge_algo1<inflate>,
+                       {
+                           WasmEdge_ValType_I32,
+                           WasmEdge_ValType_I32,
+                       },
+                       {WasmEdge_ValType_I32}, &util, HostModCxt);
 
   /**
    * @brief
    * ZEXTERN int ZEXPORT inflateEnd OF((z_streamp strm));
    */
   RegisterHostFunction("inflateEnd", WasmEdge_ZlibEnd<inflateEnd>,
-                       {WasmEdge_ValType_I32}, {WasmEdge_ValType_I32}, util,
+                       {WasmEdge_ValType_I32}, {WasmEdge_ValType_I32}, &util,
                        HostModCxt);
 
   WasmEdge_VMRegisterModuleFromImport(VMCxt, HostModCxt);
@@ -348,7 +309,7 @@ int main() {
                                  EntryPointParams, 0, EntryPointReturns, 1);
   if (WasmEdge_ResultOK(Res)) {
     const auto test_res = WasmEdge_ValueGetI32(EntryPointReturns[0]);
-    printf("Test Result : %s", test_res ? "Success" : "Failed");
+    printf("Test Result : %s\n", test_res ? "Success" : "Failed");
   } else {
     printf("Error message: %s\n", WasmEdge_ResultGetMessage(Res));
   }

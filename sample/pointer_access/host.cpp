@@ -85,7 +85,8 @@ WasmEdge_Result Print(void *Data,
 
   // RECKLESS
   {
-    uint8_t *mem_ptr = WasmEdge_MemoryInstanceGetPointer(MemCxt, 0, 128 * 1024);
+    uint8_t *mem_ptr =
+        WasmEdge_MemoryInstanceGetPointer(MemCxt, 0, 128 * 1024 * 1024);
     uint32_t str_offset =
         *(reinterpret_cast<uint32_t *>(mem_ptr + Offset + 10 * 4));
     printf("The str_offset: %u\n", str_offset);
