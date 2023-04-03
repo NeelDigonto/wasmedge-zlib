@@ -18,7 +18,13 @@
 // static_assert(sizeof(unsigned char) == sizeof(std::byte), "Unsgined char and
 // std::byte are not equal in size");
 
-static constexpr size_t DATA_SIZE = 16 * 1024 * 1024;
+#ifdef __EMSCRIPTEN__
+#define PRESERVE EMSCRIPTEN_KEEPALIVE
+#else
+#define PRESERVE
+#endif
+
+static constexpr size_t DATA_SIZE = 1 * 1024 * 1024;
 static constexpr size_t BUFFER_SIZE = 16'384; // 16 * 1024
 
 constexpr auto randChar = []() -> char {
@@ -46,8 +52,8 @@ void custom_free(voidpf opaque, voidpf address) {
 }
 
 int InitDeflateZStream(z_stream &strm, int level) {
-  strm.zalloc = custom_malloc;
-  strm.zfree = custom_free;
+  strm.zalloc = Z_NULL;
+  strm.zfree = Z_NULL;
   strm.opaque = Z_NULL;
 
   int ret = deflateInit(&strm, level);
@@ -159,7 +165,7 @@ std::vector<T> Inflate(const std::vector<unsigned char> &source) {
   return ret_buffer;
 }
 
-bool test() {
+extern "C" int PRESERVE test() {
   std::vector<char> data(DATA_SIZE, {});
   std::generate_n(std::begin(data), DATA_SIZE, randChar);
 
@@ -183,10 +189,10 @@ bool test() {
 }
 
 int main() {
-
   test();
-
   return 0;
 }
 
 // g++ src/module.cpp -lz -o module && ./module
+// em++ module.cpp -O2 -o module.wasm -sSTANDALONE_WASM
+// -sWARN_ON_UNDEFINED_SYMBOLS=0

@@ -1,0 +1,1 @@
+em++ module.cpp -O2 -o module.wasm -sSTANDALONE_WASM -sWARN_ON_UNDEFINED_SYMBOLS=0 -sIMPORTED_MEMORY -sINITIAL_MEMORY=128MB -sALLOW_MEMORY_GROWTH=0 && g++ -O2 host.cpp -o host -lz -lwasmedge && ./host
