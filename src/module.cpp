@@ -52,8 +52,8 @@ void custom_free(voidpf opaque, voidpf address) {
 }
 
 int InitDeflateZStream(z_stream &strm, int level) {
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
+  strm.zalloc = custom_malloc;
+  strm.zfree = custom_free;
   strm.opaque = Z_NULL;
 
   int ret = deflateInit(&strm, level);
@@ -67,8 +67,8 @@ int InitDeflateZStream(z_stream &strm, int level) {
 }
 
 int InitInflateZStream(z_stream &strm) {
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
+  strm.zalloc = custom_malloc;
+  strm.zfree = custom_free;
   strm.opaque = Z_NULL;
 
   int ret = inflateInit(&strm);
@@ -196,3 +196,36 @@ int main() {
 // g++ src/module.cpp -lz -o module && ./module
 // em++ module.cpp -O2 -o module.wasm -sSTANDALONE_WASM
 // -sWARN_ON_UNDEFINED_SYMBOLS=0
+
+/*
+        fathomless@vividecstasy:~/repo/wasmedge-zlib/src$ g++ -O2 module.cpp -o
+   module -lz && ./module Compressing Buffer of size : 1048576B zalloc :
+   0x563ffacb22c0 = 5952 zalloc : 0x563ffacb3a10 = 65536 zalloc : 0x563ffacc3a20
+   = 65536 zalloc : 0x563ffacd3a30 = 65536 zalloc : 0x563fface3a40 = 65536 zfree
+   : 0x563fface3a40 zfree : 0x563ffacd3a30 zfree : 0x563ffacc3a20 zfree :
+   0x563ffacb3a10 zfree : 0x563ffacb22c0 Decompressing Buffer of size : 788616B
+        zalloc : 0x563ffacb22c0 = 7160
+        zalloc : 0x563ffacf41b0 = 32768
+        zfree : 0x563ffacf41b0
+        zfree : 0x563ffacb22c0
+        Success */
+
+/**
+     extern "C" int PRESERVE test() {
+std::vector<char> data(DATA_SIZE, {});
+std::generate_n(std::begin(data), DATA_SIZE, randChar);
+
+std::cout << "Compressing Buffer of size : " << DATA_SIZE << "B" << std::endl;
+const auto compressed_buffer = Deflate(data, 6);
+
+std::cout << "Decompressing Buffer of size : " << compressed_buffer.size()
+        << "B" << std::endl;
+
+const auto decompressed_buffer = Inflate<char>(compressed_buffer);
+
+auto comp_res =
+  (data == decompressed_buffer) && (compressed_buffer.size() < data.size());
+std::cout << (comp_res ? "Success" : "Fail") << std::endl;
+return comp_res;
+}
+*/

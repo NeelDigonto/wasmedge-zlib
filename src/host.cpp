@@ -15,7 +15,6 @@ inline bool isLittleEndian() {
 }
 
 struct Util {
-
   std::unordered_map<uint32_t, z_stream *> stream_map;
 };
 
